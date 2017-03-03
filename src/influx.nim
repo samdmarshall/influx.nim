@@ -101,7 +101,7 @@ proc convertHttpCodeToInfluxStatus(code: HttpCode): InfluxStatus =
 template initializeDefaultInflux*(): InfluxDB =
   InfluxDB(protocol: HTTP, host: "localhost", port: 8086)
 
-proc getInfluxInfo*(influx: InfluxDB, requestType: HttpMethod = HttpGet): (InfluxStatus, JsonNode) =
+proc getVersion*(influx: InfluxDB, requestType: HttpMethod = HttpGet): (InfluxStatus, JsonNode) =
   let query_info = initTable[string, string]()
   case requestType
   of HttpGet, HttpHead:

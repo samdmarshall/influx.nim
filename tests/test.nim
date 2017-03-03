@@ -2,7 +2,7 @@ import json
 import "../src/influx.nim"
 
 let influxdb = initializeDefaultInflux()
-let (version_response, version_data) = influxdb.getInfluxInfo()
+let (version_response, version_data) = influxdb.getVersion()
 echo(version_response)
 echo($version_data)
 
