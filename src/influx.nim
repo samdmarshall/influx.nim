@@ -44,6 +44,12 @@ type
     username*: string
     password*: string
 
+  LineProtocol* = object
+    measurement*: string
+    tags*: Table[string, string]
+    fields*: Table[string, string]
+    timestamp*: int64
+
 # =================
 # Private Functions
 # =================
@@ -75,7 +81,6 @@ proc composeInfluxHostname(influx: InfluxDB, endpoint: string, database: string,
 proc performSyncRequest(influx: InfluxDB, httpMethod: HttpMethod, endpoint: string, database: string, additionalInfo: Table[string, string], body: string): Response =
   let client = newHttpClient()
   let influx_address = composeInfluxHostname(influx, endpoint, database, additionalInfo)
-  echo(influx_address)
   let response = client.request(influx_address, httpMethod, body)
   return response
 
@@ -94,12 +99,23 @@ proc convertHttpCodeToInfluxStatus(code: HttpCode): InfluxStatus =
     return ServerError
   return UnknownError
 
+proc serializeLine(line_data: LineProtocol): string =
+  var output = line_data.measurement
+  for key, value in line_data.tags:
+    output &= ("," & key & "=" & value)
+  output &= " "
+  var fields = newSeq[string]()
+  for key, value in line_data.fields:
+    fields.add( key & "=\"" & value & "\"" )
+  output &= fields.join(",")
+  output &= " "
+  if line_data.timestamp != 0:
+    output &= $line_data.timestamp
+  return output
+
 # ================
 # Public Functions
 # ================
-
-template initializeDefaultInflux*(): InfluxDB =
-  InfluxDB(protocol: HTTP, host: "localhost", port: 8086)
 
 proc getVersion*(influx: InfluxDB, requestType: HttpMethod = HttpGet): (InfluxStatus, JsonNode) =
   let query_info = initTable[string, string]()
@@ -113,9 +129,13 @@ proc getVersion*(influx: InfluxDB, requestType: HttpMethod = HttpGet): (InfluxSt
   else:
     raise newException(HttpRequestError, "POST requests are not allowed when performing a ping")
 
-proc write*(influx: InfluxDB, database: string, lineProtocolData: seq[string]): (InfluxStatus, JsonNode) = 
+proc write*(influx: InfluxDB, database: string, lineProtocolData: seq[LineProtocol]): (InfluxStatus, JsonNode) = 
   let query_info = initTable[string, string]()
-  let response = influx.performSyncRequest(HttpPost, InfluxWriteEndpoint, database, query_info, lineProtocolData.join("\n"))
+  var body_text = newSeq[string]()
+  for item in lineProtocolData:
+    let serialized_data = item.serializeLine()
+    body_text.add(serialized_data)
+  let response = influx.performSyncRequest(HttpPost, InfluxWriteEndpoint, database, query_info, body_text.join("\n"))
   return (convertHttpCodeToInfluxStatus(response.code), parseJson("{}"))
 
 proc query*(influx: InfluxDB, database: string, query: string, httpMethod: HttpMethod = HttpGet): (InfluxStatus, JsonNode) =
